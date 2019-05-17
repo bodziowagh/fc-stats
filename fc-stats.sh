@@ -1,4 +1,4 @@
-# Aim is to gather focal length data of photos from the directory and create a simple statistics 
+# Get focal length data of photos from the directory and create a simple statistics 
 
 DIRECTORY=$1
 
@@ -7,42 +7,54 @@ if [ ! -d $DIRECTORY ]; then
 	exit 1
 fi
 
-FILES="${DIRECTORY}/*.jpg ${DIRECTORY}/*.JPG"
-
-if [ ! -e $FILES ]; then
-	echo "Error: No files have been matched"
-	exit 1
-fi
-
+FILES_PATTERNS=(
+	"${DIRECTORY}/*.jpg"
+	"${DIRECTORY}/*.JPG"
+)
 COUNT=0
+FOCAL_LENGTHS=()
+FOCAL_LENGTHS_COUNTS=()
 
-# 0-10 10-20 20-30 ... 80-90 90-100 >100
-FOCAL_LENGTH_COUNTS=(0 0 0 0 0 0 0 0 1 0 0)
+add_focal_length () {
+	FOCAL_LENGTH=$1
 
-for file in $FILES; do
-	FOCAL_LENGTH=$(cut -d '=' -f2 <<< $(mdls $file | grep -m 1 FocalLength) | tr -d '\ ')
-
-	COUNT=$((COUNT + 1))
-
-	if [ $FOCAL_LENGTH -gt 100 ]; then
-		FOCAL_LENGTH_COUNTS[10]=$((${FOCAL_LENGTH_COUNTS[1]} + 1))
-	else
-		index=$((FOCAL_LENGTH / 10))
-		FOCAL_LENGTH_COUNTS[$index]=$((${FOCAL_LENGTH_COUNTS[$index]} + 1))
+	if [ -z $FOCAL_LENGTH ]; then
+		return 1
 	fi
 
-	echo "$file: \t$FOCAL_LENGTH"
+	for i in "${!FOCAL_LENGTHS[@]}"; do 
+		if [ "${FOCAL_LENGTHS[$i]}" == "$FOCAL_LENGTH" ]; then
+			FOCAL_LENGTHS_COUNTS[$i]=$((${FOCAL_LENGTHS_COUNTS[$i]} + 1))
+			return 0
+		fi
+	done
+
+	FOCAL_LENGTHS+=($FOCAL_LENGTH)
+	FOCAL_LENGTHS_COUNTS+=(1)
+}
+
+for FILES in $FILES_PATTERNS; do
+	for file in $FILES; do
+		FOCAL_LENGTH=$(cut -d '=' -f2 <<< $(mdls $file | grep -m 1 FocalLength) | tr -d '\ ')
+
+		COUNT=$(($COUNT + 1))
+		add_focal_length $FOCAL_LENGTH
+
+		echo "$file: \t$FOCAL_LENGTH"	# TODO: add if verbose
+	done
 done
+
+if [ ! $COUNT -ge 0 ]; then
+	echo "Error: No matching files"
+	exit 0
+fi
 
 echo "\nSuccess! Processed $COUNT files.\n"
 
-for i in "${!FOCAL_LENGTH_COUNTS[@]}"; do 
-	VALUE=${FOCAL_LENGTH_COUNTS[$i]}
+for i in "${!FOCAL_LENGTHS_COUNTS[@]}"; do 
+	FOCAL_LENGTH=${FOCAL_LENGTHS[$i]}
+	FOCAL_LENGTH_COUNT=${FOCAL_LENGTHS_COUNTS[$i]}
 
-	if [ $i -lt 10 ]; then
-  		echo "$(($i * 10)) - $(($i * 10 + 10)): \t$VALUE \t($(($VALUE * 100 / $COUNT))%)"
-	else
-		echo "> 100: \t\t${FOCAL_LENGTH_COUNTS[$i]}\t($(($VALUE * 100 / $COUNT))%)"
-	fi
+	echo "$FOCAL_LENGTH: \t$FOCAL_LENGTH_COUNT \t($(($FOCAL_LENGTH_COUNT * 100 / $COUNT))%)"
 done
  
